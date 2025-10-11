@@ -14,4 +14,9 @@ RSS_FEEDS = [
     "https://www.theguardian.com/world/financial-crime/rss",
     "https://fcpablog.com/feed/",
     "https://news.google.com/rss/",
+    "https://news.google.com/rss/search?q=corruption&hl=en-US&gl=US&ceid=US:en",
+    "https://news.google.com/rss/search?q=anti+money+laundering&hl=en-US&gl=US&ceid=US:en",
+    "https://news.google.com/rss/search?q=terrorist+financing&hl=en-US&gl=US&ceid=US:en",
+    "https://news.google.com/rss?hl=es&gl=ES&ceid=ES:es",
+    "ttps://news.google.com/rss?hl=it&gl=IT&ceid=IT:it",
 ]

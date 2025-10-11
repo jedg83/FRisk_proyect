@@ -38,6 +38,7 @@ def extract_info(article):
         "summary": article.get("description"),
         "sentiment": None,
         "extraction_timestamp": datetime.utcnow().isoformat(),
+        "feed_url": article.get("feed_url")
     }
 
     return record

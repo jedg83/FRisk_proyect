@@ -8,6 +8,7 @@ from src import config
 # ✅ Keywords related to AML (Anti-Money Laundering), TF (Terrorism Financing), and corruption
 KEYWORDS = [
     "money laundering",
+    "lavado de activos",
     "terrorist financing",
     "terrorism financing",
     "terrorism",
@@ -26,6 +27,9 @@ KEYWORDS = [
     "corruption",
     "crime",
     "illegal finance",
+    "lavado de dinero", "financiamiento del terrorismo", "corrupción", "fraude",
+    "money laundering", "terrorist financing", "AML", "TF", "anticorrupción",
+    "antiriciclaggio", "corruzione", "riciclaggio", "finanziamento del terrorismo"
 ]
 
 # ✅ Store last processed dates so we only pull *new* articles
@@ -87,6 +91,7 @@ def collect_news():
 
         try:
             feed = feedparser.parse(feed_url)
+            print(f"Fetched {len(feed.entries)} total entries from feed.")
             source_title = feed.feed.get("title", feed_url)
             entries = feed.entries
             print(f"📥 Retrieved {len(entries)} entries from {source_title}")
@@ -121,7 +126,8 @@ def collect_news():
                         "summary": summary,
                         "link": link,
                         "published": published_date.isoformat(),
-                        "source": source_title
+                        "source": source_title,
+                        "feed_url": feed_url
                     })
                     print(f"📰 Match found: {title[:80]}...")
 
