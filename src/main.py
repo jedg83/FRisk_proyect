@@ -1,5 +1,5 @@
 from src.collector import collect_news
-from src.extractor import extract_info
+from src.extractor import build_record
 from src.builder import save_json
 
 def main():
@@ -8,7 +8,7 @@ def main():
     print(f"Found {len(articles)} articles.")
 
     print("🔍 Extracting information...")
-    structured = [extract_info(a) for a in articles]
+    structured = [build_record(a) for a in articles]
 
     print("💾 Saving JSON file...")
     save_json(structured)

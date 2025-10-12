@@ -1,11 +1,27 @@
 import feedparser
 import json
 import os
-from datetime import datetime
+import re
+import spacy
+from datetime import datetime, timezone
 from dateutil import parser as date_parser
 from src import config
+from langdetect import detect, DetectorFactory
 
-# ✅ Keywords related to AML (Anti-Money Laundering), TF (Terrorism Financing), and corruption
+
+DetectorFactory.seed = 0  # For consistent language detection results
+
+# Load English and multilingual NLP models
+try:
+    nlp = spacy.load("en_core_web_sm")
+except OSError:
+    import subprocess
+    subprocess.run(["python", "-m", "spacy", "download", "en_core_web_sm"])
+    nlp = spacy.load("en_core_web_sm")
+
+
+
+# Keywords related to AML (Anti-Money Laundering), TF (Terrorism Financing), and corruption
 KEYWORDS = [
     "money laundering",
     "lavado de activos",
@@ -32,7 +48,7 @@ KEYWORDS = [
     "antiriciclaggio", "corruzione", "riciclaggio", "finanziamento del terrorismo"
 ]
 
-# ✅ Store last processed dates so we only pull *new* articles
+# Store last processed dates so we only pull *new* articles
 STATE_FILE = "data/feed_state.json"
 
 
@@ -106,10 +122,16 @@ def collect_news():
             newest_date = last_date
 
             for entry in entries:
+                title = entry.get("title", "")
+                summary = entry.get("summary", "")
+
+                if not is_relevant_news(title, summary):
+                    continue
+                # Parse publication date
                 published_date = parse_date(entry)
                 if not published_date:
                     # Use current date as fallback (helps for feeds missing dates)
-                    published_date = datetime.utcnow()
+                    published_date = datetime.now(timezone.utc)
 
                 # Skip entries already processed
                 if last_date and published_date <= last_date:
@@ -118,6 +140,8 @@ def collect_news():
                 title = entry.get("title", "")
                 summary = entry.get("summary", "")
                 link = entry.get("link", "")
+                content = (entry.get("title", "") + " " + entry.get("summary", "") + " " + entry.get("description", "")).strip()
+                people, orgs, locations = extract_entities(content)
 
                 combined_text = f"{title} {summary}".lower()
                 if any(keyword.lower() in combined_text for keyword in KEYWORDS):
@@ -127,7 +151,11 @@ def collect_news():
                         "link": link,
                         "published": published_date.isoformat(),
                         "source": source_title,
-                        "feed_url": feed_url
+                        "feed_url": feed_url,
+                        "language": entry.get("language") or infer_language(title + " " + summary, fallback=config.LANGUAGE),
+                        "people": people,
+                        "organizations": orgs,
+                        "locations": locations,
                     })
                     print(f"📰 Match found: {title[:80]}...")
 
@@ -151,3 +179,56 @@ def collect_news():
 
     print(f"\n✅ Collected {len(all_news)} new AML/TF/Corruption-related articles from {len(config.RSS_FEEDS)} feeds.\n")
     return all_news
+
+def is_relevant_news(title, summary):
+    """Check if the article is relevant to AML, TF, or corruption."""
+    text = f"{title} {summary}".lower()
+
+    # Define strong multi-language patterns
+    patterns = [
+        r"\banti[- ]?money[- ]?laundering\b",
+        r"\blavado de dinero\b",
+        r"\bfinanciamiento del terrorismo\b",
+        r"\bterrorist financing\b",
+        r"\banticorrupci[oó]n\b",
+        r"\bcorruption\b",
+        r"\bcorruzione\b",
+        r"\briciclaggio\b",
+        r"\bantiriciclaggio\b",
+        r"\bfraude?\b",
+        r"\bfraud\b",
+        r"\bbribery\b",
+        r"\bsoborno\b",
+        r"\bmalversaci[oó]n\b"
+    ]
+
+    # Stronger signal if in the title
+    title_hits = sum(bool(re.search(p, title.lower())) for p in patterns)
+    text_hits = sum(bool(re.search(p, text)) for p in patterns)
+
+    # Keep only if relevant keywords appear
+    if title_hits > 0:
+        return True  # Strong match in title
+    elif text_hits >= 2:
+        return True  # Appears multiple times in body
+    else:
+        return False
+
+def infer_language(text, fallback="unknown"):
+    try:
+        return detect(text)
+    except:
+        return fallback
+
+def extract_entities(text: str):
+    """Extract names, orgs, and countries from the text using spaCy."""
+    if not text:
+        return [], [], []
+
+    doc = nlp(text)
+    people = [ent.text for ent in doc.ents if ent.label_ == "PERSON"]
+    orgs = [ent.text for ent in doc.ents if ent.label_ == "ORG"]
+    locations = [ent.text for ent in doc.ents if ent.label_ in ("GPE", "LOC")]
+
+    return people, orgs, locations
+
