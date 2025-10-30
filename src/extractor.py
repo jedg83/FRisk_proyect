@@ -11,7 +11,7 @@ def build_record(article, names=None, orgs=None, countries=None, amounts=None):
     Build a structured record from a parsed article, 
     with robust fallbacks and consistent key names.
     """
-    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    # client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
     names = names or []
     orgs = orgs or []
@@ -60,25 +60,25 @@ def build_record(article, names=None, orgs=None, countries=None, amounts=None):
         "feed_url": article.get("feed_url"),
     }
 
-    if client:
-            try:
+    #if client:
+    #        try:
                 # Combine relevant text fields for AI enrichment
-                combined_text = f"{article.get('summary', '')}\n{article.get('description', '')}"
-                enriched_json = enrich_with_ai(client, combined_text)
+    #           combined_text = f"{article.get('summary', '')}\n{article.get('description', '')}"
+                # enriched_json = None # enrich_with_ai(client, combined_text)
 
-                try:
+    #            try:
                     # Parse and merge enrichment
-                    enriched_data = json.loads(enriched_json)
-                    if isinstance(enriched_data, dict):
-                        record["ai_enrichment"] = enriched_data  # ✅ add results as subfield
-                except json.JSONDecodeError:
-                    print(f"⚠️ AI enrichment returned invalid JSON for article: {record['title']}")
+    #                enriched_data = json.loads(enriched_json)
+    #                if isinstance(enriched_data, dict):
+    #                    record["ai_enrichment"] = enriched_data  # ✅ add results as subfield
+    #            except json.JSONDecodeError:
+    #                print(f"⚠️ AI enrichment returned invalid JSON for article: {record['title']}")
 
-            except Exception as e:
-                if "insufficient_quota" in str(e):
-                    print("⚠️ OpenAI quota exceeded, skipping enrichment.")
-                else:
-                    raise
+    #        except Exception as e:
+    #            if not "insufficient_quota" in str(e):
+                    #print("⚠️ OpenAI quota exceeded, skipping enrichment.")
+    #                print(f"⚠️ Error during AI enrichment: {e}")
+                    #raise
 
     return record
 

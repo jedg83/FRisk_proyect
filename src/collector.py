@@ -104,6 +104,7 @@ def collect_news():
 
     for feed_url in config.RSS_FEEDS:
         print(f"\n📡 Fetching: {feed_url}")
+        published_date = None
 
         try:
             feed = feedparser.parse(feed_url)
@@ -118,7 +119,14 @@ def collect_news():
 
             # Get the last processed date for this feed
             last_date_str = feed_state.get(feed_url)
-            last_date = datetime.fromisoformat(last_date_str) if last_date_str else None
+            last_date = None
+
+            if last_date_str:
+                try:
+                    last_date = datetime.fromisoformat(last_date_str.replace("Z", "+00:00"))
+                except Exception:
+                    pass
+
             newest_date = last_date
 
             for entry in entries:
@@ -133,8 +141,13 @@ def collect_news():
                     # Use current date as fallback (helps for feeds missing dates)
                     published_date = datetime.now(timezone.utc)
 
+                # Normalize both to UTC for fair comparison
+                published_date = published_date.astimezone(timezone.utc)
+                last_date_utc = last_date.astimezone(timezone.utc) if last_date else None
+
+
                 # Skip entries already processed
-                if last_date and published_date <= last_date:
+                if last_date_utc and published_date <= last_date_utc:
                     continue
 
                 title = entry.get("title", "")
@@ -157,7 +170,7 @@ def collect_news():
                         "organizations": orgs,
                         "locations": locations,
                     })
-                    print(f"📰 Match found: {title[:80]}...")
+                    #print(f"📰 Match found: {title[:80]}...")
 
                     # Update newest date seen
                     if not newest_date or published_date > newest_date:
@@ -188,8 +201,8 @@ def is_relevant_news(title, summary):
     patterns = [
         r"\banti[- ]?money[- ]?laundering\b",
         r"\blavado de dinero\b",
-        r"\bfinanciamiento del terrorismo\b",
-        r"\bterrorist financing\b",
+        r"\bterrorismo\b",
+        r"\bterrorist[- ]?financing\b",
         r"\banticorrupci[oó]n\b",
         r"\bcorruption\b",
         r"\bcorruzione\b",
@@ -199,6 +212,8 @@ def is_relevant_news(title, summary):
         r"\bfraud\b",
         r"\bbribery\b",
         r"\bsoborno\b",
+        r"\bcriminals\b",
+        r"\bcriminales\b",
         r"\bmalversaci[oó]n\b"
     ]
 
