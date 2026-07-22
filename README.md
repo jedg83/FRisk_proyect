@@ -27,3 +27,6 @@ python -m venv venv
 source venv/bin/activate  # or venv\Scripts\activate
 pip install -r requirements.txt
 python -m spacy download en_core_web_sm
+
+## execution
+cd /workspaces/FRisk_proyect && python3.13 -m pip install --user langdetect && python3.13 -m src.main
