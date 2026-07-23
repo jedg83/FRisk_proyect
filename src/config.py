@@ -1,9 +1,24 @@
 # Configuration for your AI News Agent
-from datetime import date
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+# Timezone configuration - set this to your local timezone
+# Examples: "America/New_York", "America/Los_Angeles", "Europe/London", "Asia/Tokyo"
+# Use "UTC" to keep the current behavior
+TIMEZONE = "UTC"  # Change this to your timezone
+
 LANGUAGE = "en"
 MAX_RESULTS = 20
 TOPICS = ["money laundering", "terrorist financing", "corruption"]
-OUTPUT_FILE = f"data/news_intelligence_{date.today()}.json"
+
+# Generate filename with date in configured timezone
+def get_output_file():
+    """Get output filename with current date in configured timezone."""
+    tz = ZoneInfo(TIMEZONE)
+    today = datetime.now(tz).date()
+    return f"data/news_intelligence_{today}.json"
+
+OUTPUT_FILE = get_output_file()
 RSS_FEEDS = [
     "https://www.fatf-gafi.org/en/rss.xml",
     "https://www.transparency.org/en/rss",
