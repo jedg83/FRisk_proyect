@@ -2,7 +2,7 @@
 
 Data Engineer to automate with AI agents evalutations of the alerts. This include an AI-powered agent that collects and analyzes global news related to money laundering, terrorist financing, and corruption, and outputs structured JSON data.
 
-# AI News Intelligence Agent
+## AI News Intelligence Agent
 
 This project is an **AI-powered agent** that automatically collects and analyzes global news related to **money laundering**, **terrorist financing**, and **corruption**.
 
@@ -32,4 +32,4 @@ python -m spacy download en_core_web_sm
 ---
 
 ## Execution
-cd /workspaces/FRisk_proyect && python3.13 -m pip install --user langdetect && python3.13 -m src.main
+cd /workspaces/FRisk_proyect && python3 -m pip install -r requirements.txt && python3 -m src.main

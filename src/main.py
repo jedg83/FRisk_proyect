@@ -2,6 +2,7 @@ from src.collector import collect_news
 from src.extractor import build_record
 from src.builder import save_json
 
+
 def main():
     print("📰 Collecting news...")
     articles = collect_news()
@@ -12,6 +13,8 @@ def main():
 
     print("💾 Saving JSON file...")
     save_json(structured)
+    return structured
+
 
 if __name__ == "__main__":
     main()

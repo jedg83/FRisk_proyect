@@ -2,7 +2,6 @@ import feedparser
 import json
 import os
 import re
-import spacy
 from datetime import datetime, timezone
 from dateutil import parser as date_parser
 from src import config
@@ -11,13 +10,27 @@ from langdetect import detect, DetectorFactory
 
 DetectorFactory.seed = 0  # For consistent language detection results
 
-# Load English and multilingual NLP models
+# Load English and multilingual NLP models when available.
+# The project should still work even if spaCy is not installed or the model is unavailable.
 try:
-    nlp = spacy.load("en_core_web_sm")
-except OSError:
-    import subprocess
-    subprocess.run(["python", "-m", "spacy", "download", "en_core_web_sm"])
-    nlp = spacy.load("en_core_web_sm")
+    import spacy
+except ImportError:  # pragma: no cover - optional dependency
+    spacy = None
+
+nlp = None
+if spacy is not None:
+    try:
+        nlp = spacy.load("en_core_web_sm")
+    except OSError:
+        try:
+            import subprocess
+            subprocess.run(["python", "-m", "spacy", "download", "en_core_web_sm"], check=False)
+        except Exception:
+            pass
+        try:
+            nlp = spacy.load("en_core_web_sm")
+        except Exception:
+            nlp = None
 
 
 
@@ -236,14 +249,47 @@ def infer_language(text, fallback="unknown"):
         return fallback
 
 def extract_entities(text: str):
-    """Extract names, orgs, and countries from the text using spaCy."""
+    """Extract names, orgs, and countries from the text using spaCy when available."""
     if not text:
         return [], [], []
 
-    doc = nlp(text)
-    people = [ent.text for ent in doc.ents if ent.label_ == "PERSON"]
-    orgs = [ent.text for ent in doc.ents if ent.label_ == "ORG"]
-    locations = [ent.text for ent in doc.ents if ent.label_ in ("GPE", "LOC")]
+    if nlp is not None:
+        try:
+            doc = nlp(text)
+            people = [ent.text for ent in doc.ents if ent.label_ == "PERSON"]
+            orgs = [ent.text for ent in doc.ents if ent.label_ == "ORG"]
+            locations = [ent.text for ent in doc.ents if ent.label_ in ("GPE", "LOC")]
+            if people or orgs or locations:
+                return people, orgs, locations
+        except Exception:
+            pass
+
+    # Fallback to regex-based extraction when spaCy is unavailable or fails.
+    people = []
+    orgs = []
+    locations = []
+
+    for pattern in [
+        r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\b",
+        r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\b",
+    ]:
+        for match in re.finditer(pattern, text):
+            candidate = match.group(1)
+            if candidate.lower() not in {"the", "and", "for", "of"}:
+                people.append(candidate)
+
+    for pattern in [
+        r"\b(?:company|corp|plc|inc|ltd|group|bank|ministry|university|organization|department)\b",
+        r"\b[A-Z][A-Za-z0-9&.\-]+(?:\s+[A-Z][A-Za-z0-9&.\-]+)*\b",
+    ]:
+        for match in re.finditer(pattern, text):
+            candidate = match.group(0)
+            if candidate.lower() not in {"the", "and", "for", "of", "in", "for"}:
+                orgs.append(candidate)
+
+    for location in ["Nigeria", "Lagos", "London", "New York", "United States", "Europe", "Africa", "Asia", "Middle East"]:
+        if re.search(rf"\b{re.escape(location)}\b", text, re.IGNORECASE):
+            locations.append(location)
 
     return people, orgs, locations
 
