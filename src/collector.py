@@ -34,19 +34,23 @@ if spacy is not None:
 
 
 
-# Keywords related to AML (Anti-Money Laundering), TF (Terrorism Financing), and corruption
+# Keywords related to AML (Anti-Money Laundering), TF (Terrorism Financing), corruption,
+# and broader criminal activity involving financial gain
 KEYWORDS = [
+    # Financial crimes
     "money laundering",
     "lavado de activos",
+    "lavado de dinero",
     "terrorist financing",
     "terrorism financing",
+    "financiamiento del terrorismo",
     "terrorism",
     "bribery",
     "fraud",
+    "fraude",
     "embezzlement",
     "sanctions",
     "tax evasion",
-    "organized crime",
     "illicit finance",
     "financial crime",
     "shell companies",
@@ -54,11 +58,50 @@ KEYWORDS = [
     "kleptocracy",
     "foreign bribery",
     "corruption",
-    "crime",
-    "illegal finance",
-    "lavado de dinero", "financiamiento del terrorismo", "corrupción", "fraude",
-    "money laundering", "terrorist financing", "AML", "TF", "anticorrupción",
-    "antiriciclaggio", "corruzione", "riciclaggio", "finanziamento del terrorismo"
+    "corrupción",
+    "anticorrupción",
+    "AML",
+    "TF",
+
+    # Organized crime
+    "organized crime",
+    "cartel",
+    "drug trafficking",
+    "narcotics",
+    "narcotráfico",
+    "human trafficking",
+    "trata de personas",
+    "smuggling",
+    "contrabando",
+
+    # Violent crimes with financial motives
+    "kidnapping",
+    "secuestro",
+    "ransom",
+    "rescate",
+    "extortion",
+    "extorsión",
+    "murder for hire",
+    "contract killing",
+    "assassination",
+    "asesinato",
+
+    # Property crimes
+    "robbery",
+    "robo",
+    "theft",
+    "burglary",
+    "heist",
+    "stolen",
+    "robado",
+
+    # Italian (for Italian feeds)
+    "antiriciclaggio",
+    "corruzione",
+    "riciclaggio",
+    "finanziamento del terrorismo",
+    "rapimento",
+    "furto",
 ]
 
 # Store last processed dates so we only pull *new* articles
@@ -203,17 +246,18 @@ def collect_news():
     # Save the updated feed state
     save_feed_state(new_feed_state)
 
-    print(f"\n✅ Collected {len(all_news)} new AML/TF/Corruption-related articles from {len(config.RSS_FEEDS)} feeds.\n")
+    print(f"\n✅ Collected {len(all_news)} new crime-related articles (AML/TF/Corruption/Organized Crime) from {len(config.RSS_FEEDS)} feeds.\n")
     return all_news
 
 def is_relevant_news(title, summary):
-    """Check if the article is relevant to AML, TF, or corruption."""
+    """Check if the article is relevant to AML, TF, corruption, or other financial crimes."""
     text = f"{title} {summary}".lower()
 
     # Define strong multi-language patterns
     patterns = [
+        # Financial crimes
         r"\banti[- ]?money[- ]?laundering\b",
-        r"\blavado de dinero\b",
+        r"\blavado de (dinero|activos)\b",
         r"\bterrorismo\b",
         r"\bterrorist[- ]?financing\b",
         r"\banticorrupci[oó]n\b",
@@ -225,9 +269,43 @@ def is_relevant_news(title, summary):
         r"\bfraud\b",
         r"\bbribery\b",
         r"\bsoborno\b",
+        r"\bmalversaci[oó]n\b",
+        r"\bembezzlement\b",
+        r"\btax evasion\b",
+
+        # Organized crime
+        r"\borganized crime\b",
+        r"\bcartel\b",
+        r"\bdrug trafficking\b",
+        r"\bnarcotr[aá]fico\b",
+        r"\bhuman trafficking\b",
+        r"\btrata de personas\b",
+        r"\bsmuggling\b",
+        r"\bcontrabando\b",
+
+        # Violent crimes with financial motives
+        r"\bkidnapping\b",
+        r"\bsecuestro\b",
+        r"\bransom\b",
+        r"\brescate\b",
+        r"\bextortion\b",
+        r"\bextorsi[oó]n\b",
+        r"\bmurder for hire\b",
+        r"\bcontract killing\b",
+        r"\bassassination\b",
+
+        # Property crimes
+        r"\brobbery\b",
+        r"\brobo\b",
+        r"\bheist\b",
+        r"\bburglary\b",
+        r"\btheft\b",
+
+        # General criminal indicators
         r"\bcriminals\b",
         r"\bcriminales\b",
-        r"\bmalversaci[oó]n\b"
+        r"\billicit\b",
+        r"\bil[ií]cito\b"
     ]
 
     # Stronger signal if in the title
