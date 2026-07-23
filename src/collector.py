@@ -337,37 +337,86 @@ def extract_entities(text: str):
             people = [ent.text for ent in doc.ents if ent.label_ == "PERSON"]
             orgs = [ent.text for ent in doc.ents if ent.label_ == "ORG"]
             locations = [ent.text for ent in doc.ents if ent.label_ in ("GPE", "LOC")]
-            if people or orgs or locations:
-                return people, orgs, locations
+
+            # Clean organization names (remove leading articles)
+            orgs_cleaned = []
+            for org in orgs:
+                cleaned = re.sub(r'^(the|a|an)\s+', '', org, flags=re.IGNORECASE).strip()
+                if cleaned:
+                    orgs_cleaned.append(cleaned)
+
+            # Deduplicate and return
+            return (list(dict.fromkeys(people)),
+                    list(dict.fromkeys(orgs_cleaned)),
+                    list(dict.fromkeys(locations)))
         except Exception:
             pass
 
     # Fallback to regex-based extraction when spaCy is unavailable or fails.
-    people = []
-    orgs = []
-    locations = []
+    people_set = set()
+    orgs_set = set()
+    locations_set = set()
 
-    for pattern in [
-        r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\b",
-        r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\b",
-    ]:
-        for match in re.finditer(pattern, text):
-            candidate = match.group(1)
-            if candidate.lower() not in {"the", "and", "for", "of"}:
-                people.append(candidate)
+    # Common words/phrases that should NOT be considered person names
+    stopwords = {
+        "the", "and", "for", "of", "in", "on", "at", "to", "a", "an",
+        "chief", "officer", "announces", "over", "public", "assistance",
+        "fraud", "arrests", "administrative", "action", "cases", "may",
+        "april", "june", "july", "august", "september", "october", "november",
+        "december", "january", "february", "march", "monday", "tuesday",
+        "wednesday", "thursday", "friday", "saturday", "sunday"
+    }
 
-    for pattern in [
-        r"\b(?:company|corp|plc|inc|ltd|group|bank|ministry|university|organization|department)\b",
-        r"\b[A-Z][A-Za-z0-9&.\-]+(?:\s+[A-Z][A-Za-z0-9&.\-]+)*\b",
-    ]:
-        for match in re.finditer(pattern, text):
-            candidate = match.group(0)
-            if candidate.lower() not in {"the", "and", "for", "of", "in", "for"}:
-                orgs.append(candidate)
+    # Extract person names - USE ONLY ONE PATTERN to avoid duplicates
+    # Match 2-4 capitalized words (typical person name length)
+    person_pattern = r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})\b"
+    for match in re.finditer(person_pattern, text):
+        candidate = match.group(1)
+        words = candidate.split()
 
-    for location in ["Nigeria", "Lagos", "London", "New York", "United States", "Europe", "Africa", "Asia", "Middle East"]:
+        # Filter out false positives
+        if (len(words) >= 2 and  # At least 2 words for a name
+            candidate.lower() not in stopwords and
+            not any(word.lower() in stopwords for word in words) and
+            len(candidate) < 50):  # Names shouldn't be super long
+            people_set.add(candidate)
+
+    # Extract organizations - look for known org indicators
+    # Pattern 1: Words ending with company indicators
+    org_indicators = r"\b([A-Z][A-Za-z\s&.]+(?:Company|Corp|Corporation|Inc|Ltd|Group|Bank|Ministry|University|Organization|Department|Agency|Bureau))\b"
+    for match in re.finditer(org_indicators, text, re.IGNORECASE):
+        candidate = match.group(1).strip()
+        # Remove leading articles
+        candidate = re.sub(r'^(the|a|an)\s+', '', candidate, flags=re.IGNORECASE).strip()
+        if len(candidate) < 100 and len(candidate) > 2:  # Reasonable length
+            orgs_set.add(candidate)
+
+    # Pattern 2: Common org patterns (abbreviations, all caps)
+    org_abbrev = r"\b([A-Z]{2,}(?:\s+[A-Z]{2,})*)\b"
+    for match in re.finditer(org_abbrev, text):
+        candidate = match.group(1)
+        if (2 <= len(candidate.replace(" ", "")) <= 10 and  # Reasonable abbreviation length
+            candidate not in {"US", "UK", "EU", "UN"}):  # Exclude country codes
+            orgs_set.add(candidate)
+
+    # Extract locations - expanded list of common locations
+    common_locations = [
+        # Countries
+        "Nigeria", "United States", "United Kingdom", "China", "Russia", "Mexico",
+        "Colombia", "Venezuela", "Brazil", "Argentina", "Spain", "Italy", "France",
+        "Germany", "India", "Pakistan", "Afghanistan", "Iraq", "Iran", "Syria",
+        # Cities
+        "Lagos", "London", "New York", "Washington", "Miami", "Los Angeles",
+        "Moscow", "Beijing", "Dubai", "Hong Kong", "Singapore", "Tokyo",
+        "Mexico City", "Bogota", "Caracas", "Buenos Aires", "Madrid", "Rome",
+        # Regions
+        "Europe", "Africa", "Asia", "Middle East", "Latin America", "South America"
+    ]
+
+    for location in common_locations:
         if re.search(rf"\b{re.escape(location)}\b", text, re.IGNORECASE):
-            locations.append(location)
+            locations_set.add(location)
 
-    return people, orgs, locations
+    # Convert sets to lists (preserves uniqueness)
+    return list(people_set), list(orgs_set), list(locations_set)
 

@@ -1,6 +1,11 @@
 import argparse
 from datetime import datetime
 from zoneinfo import ZoneInfo
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
 from src.collector import collect_news
 from src.extractor import build_record
 from src.builder import save_json
