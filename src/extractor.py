@@ -187,9 +187,9 @@ def enrich_with_ai(client, text: str) -> Optional[Dict[str, Any]]:
         "date_of_criminal_action. Use null for unknown values. Text:\n" + text
     )
 
-    response = client.responses.create(
+    response = client.chat.completions.create(
         model="gpt-4o-mini",
-        input=[
+        messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ],
