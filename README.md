@@ -1,6 +1,6 @@
 # FRisk_proyect
-Data Engineer to automate with AI agents evalutations of the alerts. This include an AI-powered agent that collects and analyzes global news related to money laundering, terrorist financing, and corruption, and outputs structured JSON data.
 
+Data Engineer to automate with AI agents evalutations of the alerts. This include an AI-powered agent that collects and analyzes global news related to money laundering, terrorist financing, and corruption, and outputs structured JSON data.
 
 # AI News Intelligence Agent
 
@@ -11,6 +11,7 @@ It extracts key entities (people, countries, crimes, and dates) and stores the i
 ---
 
 ## Features
+
 - Collects news from multiple sources using `gnews`
 - Uses **spaCy** for entity extraction (names, locations, dates)
 - Generates structured JSON datasets
@@ -28,5 +29,7 @@ source venv/bin/activate  # or venv\Scripts\activate
 pip install -r requirements.txt
 python -m spacy download en_core_web_sm
 
-## execution
+---
+
+## Execution
 cd /workspaces/FRisk_proyect && python3.13 -m pip install --user langdetect && python3.13 -m src.main
