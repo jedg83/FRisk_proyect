@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from src.collector import collect_news
-from src.extractor import build_record
+from src.extractor import build_record, batch_enrich_records
 from src.builder import save_json
 from src import config
 
@@ -36,6 +36,10 @@ def main(output_date=None):
 
     print("🔍 Extracting information...")
     structured = [build_record(a) for a in articles]
+
+    # AI Enrichment (batch processing for cost efficiency)
+    print("🤖 Checking for records needing AI enrichment...")
+    batch_enrich_records(structured, batch_size=10)
 
     print("💾 Saving JSON file...")
     save_json(structured)
