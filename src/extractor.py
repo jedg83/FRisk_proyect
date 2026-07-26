@@ -15,11 +15,12 @@ _openai_client_unavailable = False
 
 def build_record(article, names=None, orgs=None, countries=None, amounts=None):
     """
-    Build a structured record from a parsed article, 
+    Build a structured record from a parsed article,
     with robust fallbacks and consistent key names.
-    """
-    client = get_openai_client()
 
+    Note: AI enrichment is now done separately via batch_enrich_records()
+    for better cost efficiency.
+    """
     names = names or []
     orgs = orgs or []
     countries = countries or []
@@ -65,25 +66,10 @@ def build_record(article, names=None, orgs=None, countries=None, amounts=None):
         "sentiment": None,  # Future LLM/NLP addition
         "extraction_timestamp": datetime.utcnow().isoformat(),
         "feed_url": article.get("feed_url"),
+
+        # Store original article for potential batch enrichment
+        "_original_article": article,
     }
-
-    if client:
-        try:
-            # Combine relevant text fields for AI enrichment
-            combined_text = "\n".join(
-                filter(None, [article.get("summary", ""), article.get("description", "")])
-            ).strip()
-
-            if combined_text:
-                enriched_data = enrich_with_ai(client, combined_text)
-                if enriched_data:
-                    record["ai_enrichment"] = enriched_data  # ✅ add results as subfield
-        except Exception as e:
-            message = str(e)
-            if "insufficient_quota" in message:
-                print("⚠️ OpenAI quota exceeded, skipping enrichment.")
-            else:
-                print(f"⚠️ OpenAI enrichment failed: {message}")
 
     return record
 
@@ -187,9 +173,9 @@ def enrich_with_ai(client, text: str) -> Optional[Dict[str, Any]]:
         "date_of_criminal_action. Use null for unknown values. Text:\n" + text
     )
 
-    response = client.responses.create(
+    response = client.chat.completions.create(
         model="gpt-4o-mini",
-        input=[
+        messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ],
@@ -242,3 +228,197 @@ def _response_to_text(response: Any) -> str:
             return getattr(choice, "text", "")
 
     return ""
+
+
+# --- Batch enrichment functions (Option 1 + Option 3 combined) ---
+
+
+def needs_enrichment(record: Dict[str, Any]) -> bool:
+    """
+    Check if a record is missing critical fields and would benefit from AI enrichment.
+
+    Returns True if any of these critical fields are missing:
+    - person_name
+    - crime_type
+    - organization
+    """
+    critical_fields = [
+        "person_name",
+        "crime_type",
+        "organization",
+    ]
+
+    for field in critical_fields:
+        if not record.get(field):
+            return True
+
+    return False
+
+
+def batch_enrich_records(records: list[Dict[str, Any]], batch_size: int = 10) -> None:
+    """
+    Enrich multiple records with AI in batches for cost efficiency.
+
+    This function:
+    1. Filters records that need enrichment (missing critical fields)
+    2. Processes them in batches to minimize API calls
+    3. Updates records in-place with enriched data
+    4. Only fills in missing fields, doesn't overwrite existing data
+
+    Args:
+        records: List of record dictionaries to potentially enrich
+        batch_size: Number of articles to process per API call (default: 10)
+    """
+    client = get_openai_client()
+
+    # Always clean up temporary article data at the end
+    try:
+        if not client:
+            print("⚠️ OpenAI client not available, skipping AI enrichment.")
+            return
+
+        # Filter records that need enrichment
+        records_needing_enrichment = [
+            (i, record) for i, record in enumerate(records)
+            if needs_enrichment(record)
+        ]
+
+        if not records_needing_enrichment:
+            print("✅ All records have complete data, skipping AI enrichment.")
+            return
+
+        print(f"🤖 AI enrichment needed for {len(records_needing_enrichment)} out of {len(records)} records.")
+
+        # Process in batches
+        total_enriched = 0
+        for batch_start in range(0, len(records_needing_enrichment), batch_size):
+            batch = records_needing_enrichment[batch_start:batch_start + batch_size]
+
+            try:
+                # Prepare batch prompt
+                batch_data = []
+                for idx, (original_idx, record) in enumerate(batch):
+                    article = record.get("_original_article", {})
+                    combined_text = "\n".join(
+                        filter(None, [
+                            article.get("summary", ""),
+                            article.get("description", "")
+                        ])
+                    ).strip()
+
+                    if combined_text:
+                        batch_data.append({
+                            "index": idx,
+                            "text": combined_text[:1000]  # Limit text length to control costs
+                        })
+
+                if not batch_data:
+                    continue
+
+                # Call OpenAI with batch
+                enriched_results = _enrich_batch_with_ai(client, batch_data)
+
+                if enriched_results:
+                    # Apply results back to records
+                    for idx, enriched_data in enriched_results.items():
+                        if idx < len(batch):
+                            original_idx, record = batch[idx]
+
+                            # Only fill in missing fields
+                            for key, value in enriched_data.items():
+                                if value and not record.get(key):
+                                    record[key] = value
+
+                            total_enriched += 1
+
+            except Exception as e:
+                message = str(e)
+                if "insufficient_quota" in message:
+                    print("⚠️ OpenAI quota exceeded, stopping enrichment.")
+                    break
+                else:
+                    print(f"⚠️ Batch enrichment failed: {message}")
+
+        print(f"✅ Successfully enriched {total_enriched} records with AI.")
+
+    finally:
+        # Always clean up temporary article data
+        for record in records:
+            record.pop("_original_article", None)
+
+
+def _enrich_batch_with_ai(client, batch_data: list[Dict[str, Any]]) -> Optional[Dict[int, Dict[str, Any]]]:
+    """
+    Call OpenAI to enrich multiple articles in a single API call.
+
+    Args:
+        client: OpenAI client instance
+        batch_data: List of dicts with 'index' and 'text' keys
+
+    Returns:
+        Dictionary mapping index to enriched data, or None if failed
+    """
+    if not batch_data:
+        return None
+
+    # Build batch prompt
+    system_prompt = (
+        "You are a compliance analyst who extracts anti-money-laundering intelligence. "
+        "Always reply with valid JSON."
+    )
+
+    # Create articles text for batch processing
+    articles_text = []
+    for item in batch_data:
+        articles_text.append(
+            f"[Article {item['index']}]\n{item['text']}\n"
+        )
+
+    combined_articles = "\n---\n".join(articles_text)
+
+    user_prompt = (
+        "Extract structured information about AML, terrorism financing, or corruption cases "
+        "from the articles below. For each article, return a JSON object with these fields: "
+        "person_name, nationality, organization, crime_type, case_description, date_of_criminal_action. "
+        "Use null for unknown values.\n\n"
+        "Return a JSON object where keys are article indices (0, 1, 2, etc.) and values are the extracted data.\n\n"
+        f"Articles:\n{combined_articles}"
+    )
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.2,
+            max_tokens=2000,  # Control costs
+        )
+
+        content = _response_to_text(response)
+        if not content:
+            return None
+
+        parsed = json.loads(content)
+        if not isinstance(parsed, dict):
+            return None
+
+        # Convert string keys to integers if needed
+        result = {}
+        for key, value in parsed.items():
+            try:
+                idx = int(key)
+                if isinstance(value, dict):
+                    result[idx] = value
+            except (ValueError, TypeError):
+                continue
+
+        return result if result else None
+
+    except json.JSONDecodeError:
+        print("⚠️ OpenAI returned non-JSON content in batch enrichment.")
+        return None
+    except Exception as e:
+        raise e

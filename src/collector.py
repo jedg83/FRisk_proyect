@@ -2,7 +2,6 @@ import feedparser
 import json
 import os
 import re
-import spacy
 from datetime import datetime, timezone
 from dateutil import parser as date_parser
 from src import config
@@ -11,29 +10,47 @@ from langdetect import detect, DetectorFactory
 
 DetectorFactory.seed = 0  # For consistent language detection results
 
-# Load English and multilingual NLP models
+# Load English and multilingual NLP models when available.
+# The project should still work even if spaCy is not installed or the model is unavailable.
 try:
-    nlp = spacy.load("en_core_web_sm")
-except OSError:
-    import subprocess
-    subprocess.run(["python", "-m", "spacy", "download", "en_core_web_sm"])
-    nlp = spacy.load("en_core_web_sm")
+    import spacy
+except ImportError:  # pragma: no cover - optional dependency
+    spacy = None
+
+nlp = None
+if spacy is not None:
+    try:
+        nlp = spacy.load("en_core_web_sm")
+    except OSError:
+        try:
+            import subprocess
+            subprocess.run(["python", "-m", "spacy", "download", "en_core_web_sm"], check=False)
+        except Exception:
+            pass
+        try:
+            nlp = spacy.load("en_core_web_sm")
+        except Exception:
+            nlp = None
 
 
 
-# Keywords related to AML (Anti-Money Laundering), TF (Terrorism Financing), and corruption
+# Keywords related to AML (Anti-Money Laundering), TF (Terrorism Financing), corruption,
+# and broader criminal activity involving financial gain
 KEYWORDS = [
+    # Financial crimes
     "money laundering",
     "lavado de activos",
+    "lavado de dinero",
     "terrorist financing",
     "terrorism financing",
+    "financiamiento del terrorismo",
     "terrorism",
     "bribery",
     "fraud",
+    "fraude",
     "embezzlement",
     "sanctions",
     "tax evasion",
-    "organized crime",
     "illicit finance",
     "financial crime",
     "shell companies",
@@ -41,11 +58,50 @@ KEYWORDS = [
     "kleptocracy",
     "foreign bribery",
     "corruption",
-    "crime",
-    "illegal finance",
-    "lavado de dinero", "financiamiento del terrorismo", "corrupción", "fraude",
-    "money laundering", "terrorist financing", "AML", "TF", "anticorrupción",
-    "antiriciclaggio", "corruzione", "riciclaggio", "finanziamento del terrorismo"
+    "corrupción",
+    "anticorrupción",
+    "AML",
+    "TF",
+
+    # Organized crime
+    "organized crime",
+    "cartel",
+    "drug trafficking",
+    "narcotics",
+    "narcotráfico",
+    "human trafficking",
+    "trata de personas",
+    "smuggling",
+    "contrabando",
+
+    # Violent crimes with financial motives
+    "kidnapping",
+    "secuestro",
+    "ransom",
+    "rescate",
+    "extortion",
+    "extorsión",
+    "murder for hire",
+    "contract killing",
+    "assassination",
+    "asesinato",
+
+    # Property crimes
+    "robbery",
+    "robo",
+    "theft",
+    "burglary",
+    "heist",
+    "stolen",
+    "robado",
+
+    # Italian (for Italian feeds)
+    "antiriciclaggio",
+    "corruzione",
+    "riciclaggio",
+    "finanziamento del terrorismo",
+    "rapimento",
+    "furto",
 ]
 
 # Store last processed dates so we only pull *new* articles
@@ -190,17 +246,18 @@ def collect_news():
     # Save the updated feed state
     save_feed_state(new_feed_state)
 
-    print(f"\n✅ Collected {len(all_news)} new AML/TF/Corruption-related articles from {len(config.RSS_FEEDS)} feeds.\n")
+    print(f"\n✅ Collected {len(all_news)} new crime-related articles (AML/TF/Corruption/Organized Crime) from {len(config.RSS_FEEDS)} feeds.\n")
     return all_news
 
 def is_relevant_news(title, summary):
-    """Check if the article is relevant to AML, TF, or corruption."""
+    """Check if the article is relevant to AML, TF, corruption, or other financial crimes."""
     text = f"{title} {summary}".lower()
 
     # Define strong multi-language patterns
     patterns = [
+        # Financial crimes
         r"\banti[- ]?money[- ]?laundering\b",
-        r"\blavado de dinero\b",
+        r"\blavado de (dinero|activos)\b",
         r"\bterrorismo\b",
         r"\bterrorist[- ]?financing\b",
         r"\banticorrupci[oó]n\b",
@@ -212,9 +269,43 @@ def is_relevant_news(title, summary):
         r"\bfraud\b",
         r"\bbribery\b",
         r"\bsoborno\b",
+        r"\bmalversaci[oó]n\b",
+        r"\bembezzlement\b",
+        r"\btax evasion\b",
+
+        # Organized crime
+        r"\borganized crime\b",
+        r"\bcartel\b",
+        r"\bdrug trafficking\b",
+        r"\bnarcotr[aá]fico\b",
+        r"\bhuman trafficking\b",
+        r"\btrata de personas\b",
+        r"\bsmuggling\b",
+        r"\bcontrabando\b",
+
+        # Violent crimes with financial motives
+        r"\bkidnapping\b",
+        r"\bsecuestro\b",
+        r"\bransom\b",
+        r"\brescate\b",
+        r"\bextortion\b",
+        r"\bextorsi[oó]n\b",
+        r"\bmurder for hire\b",
+        r"\bcontract killing\b",
+        r"\bassassination\b",
+
+        # Property crimes
+        r"\brobbery\b",
+        r"\brobo\b",
+        r"\bheist\b",
+        r"\bburglary\b",
+        r"\btheft\b",
+
+        # General criminal indicators
         r"\bcriminals\b",
         r"\bcriminales\b",
-        r"\bmalversaci[oó]n\b"
+        r"\billicit\b",
+        r"\bil[ií]cito\b"
     ]
 
     # Stronger signal if in the title
@@ -236,14 +327,96 @@ def infer_language(text, fallback="unknown"):
         return fallback
 
 def extract_entities(text: str):
-    """Extract names, orgs, and countries from the text using spaCy."""
+    """Extract names, orgs, and countries from the text using spaCy when available."""
     if not text:
         return [], [], []
 
-    doc = nlp(text)
-    people = [ent.text for ent in doc.ents if ent.label_ == "PERSON"]
-    orgs = [ent.text for ent in doc.ents if ent.label_ == "ORG"]
-    locations = [ent.text for ent in doc.ents if ent.label_ in ("GPE", "LOC")]
+    if nlp is not None:
+        try:
+            doc = nlp(text)
+            people = [ent.text for ent in doc.ents if ent.label_ == "PERSON"]
+            orgs = [ent.text for ent in doc.ents if ent.label_ == "ORG"]
+            locations = [ent.text for ent in doc.ents if ent.label_ in ("GPE", "LOC")]
 
-    return people, orgs, locations
+            # Clean organization names (remove leading articles)
+            orgs_cleaned = []
+            for org in orgs:
+                cleaned = re.sub(r'^(the|a|an)\s+', '', org, flags=re.IGNORECASE).strip()
+                if cleaned:
+                    orgs_cleaned.append(cleaned)
+
+            # Deduplicate and return
+            return (list(dict.fromkeys(people)),
+                    list(dict.fromkeys(orgs_cleaned)),
+                    list(dict.fromkeys(locations)))
+        except Exception:
+            pass
+
+    # Fallback to regex-based extraction when spaCy is unavailable or fails.
+    people_set = set()
+    orgs_set = set()
+    locations_set = set()
+
+    # Common words/phrases that should NOT be considered person names
+    stopwords = {
+        "the", "and", "for", "of", "in", "on", "at", "to", "a", "an",
+        "chief", "officer", "announces", "over", "public", "assistance",
+        "fraud", "arrests", "administrative", "action", "cases", "may",
+        "april", "june", "july", "august", "september", "october", "november",
+        "december", "january", "february", "march", "monday", "tuesday",
+        "wednesday", "thursday", "friday", "saturday", "sunday"
+    }
+
+    # Extract person names - USE ONLY ONE PATTERN to avoid duplicates
+    # Match 2-4 capitalized words (typical person name length)
+    person_pattern = r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})\b"
+    for match in re.finditer(person_pattern, text):
+        candidate = match.group(1)
+        words = candidate.split()
+
+        # Filter out false positives
+        if (len(words) >= 2 and  # At least 2 words for a name
+            candidate.lower() not in stopwords and
+            not any(word.lower() in stopwords for word in words) and
+            len(candidate) < 50):  # Names shouldn't be super long
+            people_set.add(candidate)
+
+    # Extract organizations - look for known org indicators
+    # Pattern 1: Words ending with company indicators
+    org_indicators = r"\b([A-Z][A-Za-z\s&.]+(?:Company|Corp|Corporation|Inc|Ltd|Group|Bank|Ministry|University|Organization|Department|Agency|Bureau))\b"
+    for match in re.finditer(org_indicators, text, re.IGNORECASE):
+        candidate = match.group(1).strip()
+        # Remove leading articles
+        candidate = re.sub(r'^(the|a|an)\s+', '', candidate, flags=re.IGNORECASE).strip()
+        if len(candidate) < 100 and len(candidate) > 2:  # Reasonable length
+            orgs_set.add(candidate)
+
+    # Pattern 2: Common org patterns (abbreviations, all caps)
+    org_abbrev = r"\b([A-Z]{2,}(?:\s+[A-Z]{2,})*)\b"
+    for match in re.finditer(org_abbrev, text):
+        candidate = match.group(1)
+        if (2 <= len(candidate.replace(" ", "")) <= 10 and  # Reasonable abbreviation length
+            candidate not in {"US", "UK", "EU", "UN"}):  # Exclude country codes
+            orgs_set.add(candidate)
+
+    # Extract locations - expanded list of common locations
+    common_locations = [
+        # Countries
+        "Nigeria", "United States", "United Kingdom", "China", "Russia", "Mexico",
+        "Colombia", "Venezuela", "Brazil", "Argentina", "Spain", "Italy", "France",
+        "Germany", "India", "Pakistan", "Afghanistan", "Iraq", "Iran", "Syria",
+        # Cities
+        "Lagos", "London", "New York", "Washington", "Miami", "Los Angeles",
+        "Moscow", "Beijing", "Dubai", "Hong Kong", "Singapore", "Tokyo",
+        "Mexico City", "Bogota", "Caracas", "Buenos Aires", "Madrid", "Rome",
+        # Regions
+        "Europe", "Africa", "Asia", "Middle East", "Latin America", "South America"
+    ]
+
+    for location in common_locations:
+        if re.search(rf"\b{re.escape(location)}\b", text, re.IGNORECASE):
+            locations_set.add(location)
+
+    # Convert sets to lists (preserves uniqueness)
+    return list(people_set), list(orgs_set), list(locations_set)
 
